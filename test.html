@@ -1,0 +1,148 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>Untitled Document</title>
+    <script src="http://libs.baidu.com/jquery/2.0.0/jquery.min.js"></script>
+</head>
+<input id = 'info' type="text">
+<input type="button" id="send" value="send">
+<br/><br/><br/>
+<style type="text/css">
+    .sites {
+        width: 150px;
+        height: 150px;
+        background-color: aqua;
+        text-align:center;
+        display:block;
+        float:left;
+        margin-left: 20px;
+        margin-top: 20px;
+    }
+
+    .sites_temp_picked{
+        background-color: darkgray;
+    }
+
+    .sites_final_picked{
+        width: 150px;
+        height: 150px;
+        background-color: deeppink;
+        text-align:center;
+        display:block;
+        float:left;
+        margin-left: 20px;
+        margin-top: 20px;
+    }
+
+    .client_id {
+        font-size: large;
+    }
+</style>
+<span class="client_id" id="client_id"></span>
+<br/><br/><br/>
+
+
+    <span class="sites" id="A_1" siteid="A_1" pick_status="0">A_1</span>
+    <span class="sites" id="A_2" siteid="A_2" pick_status="0">A_2</span>
+    <span class="sites_final_picked" id="A_3" siteid="A_3" pick_status="-1">A_3</span>
+    <span class="sites" id="A_4" siteid="A_4" pick_status="0">A_4</span>
+    <span class="sites" id="A_5" siteid="A_5" pick_status="0">A_5</span>
+    <span class="sites" id="A_6" siteid="A_6" pick_status="0">A_6</span>
+    <span class="sites" id="A_7" siteid="A_7" pick_status="0">A_7</span>
+    <span class="sites" id="A_8" siteid="A_8" pick_status="0">A_8</span>
+    <span class="sites" id="A_9" siteid="A_9" pick_status="0">A_9</span>
+    <span class="sites" id="A_10" siteid="A_10" pick_status="0">A_10</span>
+    <span class="sites" id="A_11" siteid="A_11" pick_status="0">A_11</span>
+    <span class="sites" id="A_12" siteid="A_12" pick_status="0">A_12</span>
+
+<body>
+</body>
+<script type="text/javascript">
+    var wsServer = 'ws://47.75.173.68:8080/websocket_sitepick';
+    var websocket = new WebSocket(wsServer);
+    var function_code = 'site_pick';
+    var action_id = 'action0000001';
+    var datetimes = '20210801';
+    var client_uid = 'test'+(Math.floor(Math.random() * 100) + 1);
+    console.log(client_uid);
+
+    websocket.onopen = function (evt) {
+        var sendinfo = new Object();
+        sendinfo.function_code = function_code;
+        sendinfo.action_id = action_id;
+        sendinfo.client_id = client_uid;
+        sendinfo.datetimes = datetimes;
+        sendinfo.action_type = 'pick_start';
+        sendMsg(JSON.stringify(sendinfo));
+        console.log("Connected to WebSocket server.");
+    };
+
+    websocket.onclose = function (evt) {
+        alert('disconnected');
+        console.log("Disconnected");
+    };
+
+    websocket.onmessage = function (evt) {
+    console.log('Retrieved data from server: ' + evt.data);
+    //console.log(evt);
+    };
+
+    websocket.onerror = function (evt, e) {
+    console.log('Error occured: ' + evt.data);
+    };
+
+    $(document).ready(function(){
+        $("#send").on("click",function(){
+            var testinfo = $("#info").val();
+            sendMsg(testinfo);
+        });
+        $("#client_id").text(client_uid);
+
+        //选座通知变化
+        $(".sites").on("click",function(){
+            var sendinfo = new Object();
+            sendinfo.function_code = function_code;
+            sendinfo.action_id = action_id;
+            sendinfo.client_id = client_uid;
+            sendinfo.datetimes = datetimes;
+
+            if($(this).attr('pick_status') == '1'){
+                $(this).attr("class","sites");
+                $(this).attr('pick_status','0');
+                sendinfo.action_site_id = $(this).attr('siteid');
+                sendinfo.action_type = 'pick_remove';
+            }else if($(this).attr('pick_status') == '0'){
+                $(this).attr("class","sites sites_temp_picked");
+                $(this).attr('pick_status','1');
+                sendinfo.action_site_id = $(this).attr('siteid');
+                sendinfo.action_type = 'pick_add';
+            }
+            console.log(sendinfo);
+            sendMsg(JSON.stringify(sendinfo));
+        });
+
+    });
+
+
+
+
+    //sendping
+    clearInterval(test);  //清理一次，下面再执行
+    var test = setInterval(function(){
+        console.log('send ping from client');
+        sendMsg('PING');
+    },20000);
+
+    function sendMsg (str) {
+        //console.log("socket:sendMsg:");
+        websocket.send(str);
+    }
+
+
+
+
+
+
+
+</script>
+</html>
