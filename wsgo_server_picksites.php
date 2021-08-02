@@ -12,11 +12,12 @@ class SysSetting{
     //set
     public static $makesure_ticketkey = "ticket:action:makesure:"; //:actionid:datattimes已支付的作为归属
     //set
-    public static $temp_singleactiontimegroup = "ticket:action:clienttempfdrelationgroup:"; //:actionid:datattimes当前活动场次内 运行时参与人员
-    //string
+    public static $temp_singleactiontimegroup = "ticket:action:room:"; //:actionid:datattimes当前活动场次内 运行时参与人员
+    //string  保存参与活动
     public static $global_fd = "fd:"; //运行时fd
+    public static $global_fd_idenitify = "fd:callId:"; //群发鉴别id
     //set
-    public static $temp_singleactiontimepicked = "ticket:action:clienttemppicked:"; //:actionid:datattimes当前活动场次内 运行时参与人员 已选择
+    public static $temp_singleactiontimepicked = "ticket:action:tempPicked:"; //:actionid:datattimes当前活动场次内 运行时参与人员 已选择
 
 
 
@@ -50,7 +51,7 @@ class SysRedis
     }
 
     //首次接入活动页
-    public function firstlogin_action($fd,$sendinfo){
+    public function firstlogin_action($fd,$objectId,$sendinfo){
         $sendinfo_arr = json_decode($sendinfo,true);
 
         $actionallmembers = $this->redisconnect->sMembers(
@@ -73,8 +74,8 @@ class SysRedis
         }
 
         //(2)插入新的临时群组fd||UID关系 更新全局fd表
-        $this->add_fd($fd,$sendinfo_arr['client_id'],$sendinfo_arr['action_id'],$sendinfo_arr['datetimes']);
-        $this->add_tempgroup_member($fd.'||'.$sendinfo_arr['client_id'],SysSetting::wxpre(SysSetting::$temp_singleactiontimegroup.$sendinfo_arr['action_id'].':'.$sendinfo_arr['datetimes']));
+        $this->add_fd($fd,$objectId,$sendinfo_arr['client_id'],$sendinfo_arr['action_id'],$sendinfo_arr['datetimes']);
+        $this->add_tempgroup_member($fd.'||'.$objectId.'||'.$sendinfo_arr['client_id'],SysSetting::wxpre(SysSetting::$temp_singleactiontimegroup.$sendinfo_arr['action_id'].':'.$sendinfo_arr['datetimes']));
 
         //(3)当前活动获取稳定的座位信息 + 临时座位占用信息
         $actionstable_sites = $this->redisconnect->sMembers(SysSetting::wxpre(SysSetting::$makesure_ticketkey.$sendinfo_arr['action_id'].':'.$sendinfo_arr['datetimes']));
@@ -131,17 +132,19 @@ class SysRedis
     }
     //全局fd
     //fd - uid  参与多活动关系记录
-    public function add_fd($fd,$uid,$actionid,$datatimes){
+    public function add_fd($fd,$objectId,$uid,$actionid,$datatimes){
         $info = $this->redisconnect->get(SysSetting::wxpre(SysSetting::$global_fd.$fd));
         if ($info){
             $info_arr = json_decode($info,true);
             $info_arr['client_id'] = $uid;
+            $info_arr['identify_id'] = $objectId;
             $info_arr['join_action_info'][] = $actionid.':'.$datatimes;
             $info_arr['join_action_info'] = array_unique($info_arr['join_action_info']);
             $this->redisconnect->set(SysSetting::wxpre(SysSetting::$global_fd.$fd),json_encode($info_arr,JSON_UNESCAPED_UNICODE));
         }else{
             $info_arr = array();
             $info_arr['client_id'] = $uid;
+            $info_arr['identify_id'] = $objectId;
             $info_arr['join_action_info'][] = $actionid.':'.$datatimes;
             $this->redisconnect->set(SysSetting::wxpre(SysSetting::$global_fd.$fd),json_encode($info_arr,JSON_UNESCAPED_UNICODE),60);
         }
@@ -153,7 +156,7 @@ class SysRedis
         if (isset($info_arr['join_action_info']) && count($info_arr['join_action_info'])>0){
             foreach ($info_arr['join_action_info'] as $actionitem){
                 //移除组临时成员
-                $this->remove_tempgroup_member($fd.'||'.$info_arr['client_id'],SysSetting::wxpre(SysSetting::$temp_singleactiontimegroup.$actionitem));
+                $this->remove_tempgroup_member($fd.'||'.$info_arr['identify_id'].'||'.$info_arr['client_id'],SysSetting::wxpre(SysSetting::$temp_singleactiontimegroup.$actionitem));
                 //移除所有临时选座记录
                 $this->remove_tempgrouppicked_info_search($fd.'||'.$info_arr['client_id'],SysSetting::wxpre(SysSetting::$temp_singleactiontimepicked.$actionitem));
 
@@ -176,6 +179,17 @@ class SysRedis
     //变化座位选择
     public function change_tempsite_status($fd,$sendinfo){
         $sendinfo_arr = json_decode($sendinfo,true);
+        $return_info = array();
+        $return_info['status'] = true;
+        $return_info['notice_ids'] = array();
+        $return_info['notice_info'] = array('action_client_id'=>$sendinfo_arr['client_id'],'action_type'=>$sendinfo_arr['action_type'],'siteid'=>$sendinfo_arr['action_site_id']);
+        //获取指定房间内人员
+        $room_members = $this->redisconnect->sMembers(SysSetting::wxpre(SysSetting::$temp_singleactiontimegroup.$sendinfo_arr['action_id'].':'.$sendinfo_arr['datetimes']));
+        foreach ($room_members as $memberitem){
+            $temp = explode('||',$memberitem);
+            $return_info['notice_ids'][] = $temp[1];
+        }
+
         if ($sendinfo_arr['action_type'] == 'pick_add'){
             //检查 是否已经被人选取  不可重复选取
             $check = $this->check_tempgrouppicked_info_search('||'.$sendinfo_arr['action_site_id'],SysSetting::wxpre(SysSetting::$temp_singleactiontimepicked.$sendinfo_arr['action_id'].':'.$sendinfo_arr['datetimes']));
@@ -186,6 +200,7 @@ class SysRedis
             $member = $fd.'||'.$sendinfo_arr['client_id'].'||'.$sendinfo_arr['action_site_id'];
             $this->add_tempgrouppicked_info($member,
                 SysSetting::wxpre(SysSetting::$temp_singleactiontimepicked.$sendinfo_arr['action_id'].':'.$sendinfo_arr['datetimes']));
+
         }else if ($sendinfo_arr['action_type'] == 'pick_remove'){
             $member = $fd.'||'.$sendinfo_arr['client_id'].'||'.$sendinfo_arr['action_site_id'];
             //检查 是否是本uid有修改取消权限
@@ -199,7 +214,7 @@ class SysRedis
                 SysSetting::wxpre(SysSetting::$temp_singleactiontimepicked.$sendinfo_arr['action_id'].':'.$sendinfo_arr['datetimes']));
         }
 
-        return true;
+        return $return_info;
 
     }
 
@@ -208,20 +223,27 @@ class SysRedis
 
 
 run(function () {
+    set_time_limit(0);
     $server = new Serversw('0.0.0.0', 8080, false);
     $server->handle('/websocket_sitepick', function (Requestsw $request, Responsesw $ws) {
         $ws->upgrade();
-        $redisconnect = new SysRedis();
+        global $wsObjects;
+        $objectId = spl_object_id($ws);
+        $wsObjects[$objectId] = $ws;
 
+        $redisconnect = new SysRedis();
         //首次连接
         //首次连入服务器
         //（1）检查是否uid已加入活动组，离线老接入
         //（2）加入活动组
         //（3）返回最新稳定及临时选座状态
         $frame_onconnect = $ws->recv();
-        $sites_status = $redisconnect->firstlogin_action($frame_onconnect->fd,$frame_onconnect->data);
-        $ws->push(json_encode($sites_status,JSON_UNESCAPED_UNICODE));
-
+        $sites_status = $redisconnect->firstlogin_action($frame_onconnect->fd,$objectId,$frame_onconnect->data);
+        $sendinfo = array();
+        $sendinfo['type'] = 'sendonly';
+        $sendinfo['action_info'] = $sites_status;
+        $sendinfo_str = json_encode($sendinfo,JSON_UNESCAPED_UNICODE);
+        $ws->push($sendinfo_str);
         while (true) {
             $frame = $ws->recv();
             if ($frame === '') {
@@ -259,12 +281,24 @@ run(function () {
                     //js ping
                     $ws->push('PONE');
 
+
                 }else{
                     //（4）处理客户端变化
                     $result = $redisconnect->change_tempsite_status($frame->fd,$frame->data);
                     if (!$result){
                         $ws->push("操作异常");
+                    }else{
+                        $sendinfo = array();
+                        $sendinfo['type'] = 'sendall';
+                        $sendinfo['action_info'] = $result['notice_info'];
+                        $sendinfo_str = json_encode($sendinfo,JSON_UNESCAPED_UNICODE);
+                        foreach ($result['notice_ids'] as $notice_id){
+                            if (isset($wsObjects[$notice_id])){
+                                $wsObjects[$notice_id]->push($sendinfo_str);
+                            }
+                        }
                     }
+
 //                    $ws->push("Hello {$frame->data}!");
 //                    $ws->push("How are you, {$frame->data}?");
                 }
