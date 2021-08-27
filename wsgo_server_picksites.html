@@ -58,12 +58,14 @@
 <body>
 </body>
 <script type="text/javascript">
-    var wsServer = 'ws://47.75.173.68:8080/websocket_sitepick';
-    var websocket = new WebSocket(wsServer);
     var function_code = 'site_pick';
     var action_id = 'action0000001';
     var datetimes = '20210801';
     var client_uid = 'test'+(Math.floor(Math.random() * 100) + 1);
+
+    var wsServer = 'ws://47.75.173.68:8080/websocket_sitepick/'+client_uid;
+    var websocket = new WebSocket(wsServer);
+
     console.log(client_uid);
 
     websocket.onopen = function (evt) {
