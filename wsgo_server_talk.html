@@ -58,46 +58,23 @@
 <body>
 </body>
 <script type="text/javascript">
+
     var function_code = 'site_pick';
     var action_id = 'action0000001';
     var datetimes = '20210801';
     var client_uid = 'test'+(Math.floor(Math.random() * 100) + 1);
-
     var wsServer = 'ws://47.75.173.68:8080/supiSimDealCenter';
-    var websocket = new WebSocket(wsServer);
+    var checkpingpone_status = true;
 
-    console.log(client_uid);
+    var websocket = '';
 
-    websocket.onopen = function (evt) {
-        var sendinfo = new Object();
-        sendinfo.function_code = function_code;
-        sendinfo.action_type = 'User.login';
-        sendinfo.user_imid = 'FASTGO_NUSER_ABTEST0';
-        sendinfo.datetimes = datetimes;
-        sendinfo.logintoken = '2e635497005183ae96dbe457f40fd485';
-        sendMsg(JSON.stringify(sendinfo));
-        console.log("Connected to WebSocket server.");
-    };
 
-    websocket.onclose = function (evt) {
-        alert('disconnected');
-        console.log("Disconnected");
-    };
 
-    websocket.onmessage = function (evt) {
-    console.log('Retrieved data from server: ' + evt.data);
-        if(evt.data != 'PONE'){
-            //var obj = JSON.parse(evt.data);
-        }
-
-    //console.log(evt);
-    };
-
-    websocket.onerror = function (evt, e) {
-    console.log('Error occured: ' + evt.data);
-    };
 
     $(document).ready(function(){
+        websocket = new WebSocket(wsServer);
+        initwebsocket(websocket);
+
         $("#send").on("click",function(){
             var testinfo = $("#info").val();
             sendMsg(testinfo);
@@ -106,20 +83,65 @@
 
     });
 
+    //注册websocekt事件å
+    function initwebsocket(websocket) {
+        websocket.onopen = function (evt) {
+            loginsim();
+        };
+        websocket.onclose = function (evt) {
+            alert('disconnected');
+            console.log("Disconnected");
+        };
+        websocket.onmessage = function (evt) {
+            console.log('Retrieved data from server: ' + evt.data);
+            if(evt.data == 'PONE'){
+                //设置一切正常
+                checkpingpone_status = true;
+            }
+            if(evt.data != 'PONE'){
+                //var obj = JSON.parse(evt.data);
+            }
+        };
+        websocket.onerror = function (evt, e) {
+            console.log('Error occured: ' + evt.data);
+        };
+    }
 
+    function loginsim(){
+        var sendinfo = new Object();
+        sendinfo.function_code = function_code;
+        sendinfo.action_type = 'User.login';
+        sendinfo.user_imid = 'FASTGO_NUSER_ABTEST0';
+        sendinfo.datetimes = datetimes;
+        sendinfo.logintoken = '0af2fe5c6d59d047e3365ae125ab450c';
+        sendMsg(JSON.stringify(sendinfo));
+        checkpingpone_status = true;
+        console.log("Connected to WebSocket server.");
+    }
 
 
     //sendping
+    //reconnection
     clearInterval(test);  //清理一次，下面再执行
     var test = setInterval(function(){
         console.log('send ping from client');
         sendMsg('PING');
+        //预先设置pp检测不正常  返回pong会设置为正常
+        if (checkpingpone_status){
+            checkpingpone_status = false;
+        }else{
+            console.log('reconnect server ......');
+            websocket = new WebSocket(wsServer);
+            initwebsocket(websocket);
+        }
     },20000);
+
 
     function sendMsg (str) {
         //console.log("socket:sendMsg:");
-        websocket.send(str);
+            websocket.send(str);
     }
+
 
 
 
